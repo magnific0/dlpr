@@ -1,0 +1,43 @@
+#!/bin/bash
+# D(MENU) LPR file printing tool
+# Uses DMENU (dynamic menu) for selecting a printer and
+# options to print a file.
+#
+# by magnific0 (20120911)
+# http://www.github.com/magnific0/dlpr
+
+COLORS=" -nb #303030 -nf khaki -sb #CCFFAA -sf #303030"
+if dmenu --help 2>&1 | grep -q '\[-rs\] \[-ni\] \[-nl\] \[-xs\]'
+then
+        DMENU="dmenu -i -xs -rs -l 10" # vertical patch
+else
+        DMENU="dmenu -i" # horizontal, oh well!
+fi
+
+printer=`lpstat -p | awk '{print $2}' | $DMENU -p 'Printer:' $COLORS | perl -p -e 's/^.*?: ?//'`
+
+echo "Default options of this printer:"
+lpoptions -d $printer -l | grep -Ei 'duplex|color.*mode|colour.*mode|staple'
+
+set_options=`echo -e 'No\nYes' | $DMENU -p 'Set options?' $COLORS | perl -p -e 's/^.*?: ?//'`
+
+options=""
+
+# standard options to lpr, not in the printer lpstat -l, but still accepted by lpr
+lpr_options="page-ranges\nlandscape"
+
+while [ $set_options == "Yes" ]; do
+	printer_options=`lpoptions -d $printer -l | grep -v NotInstalled | awk '{ print $1 }' | sed 's/:\+//g'`
+	option_to_set=`echo -e "$lpr_options\n$printer_options" | $DMENU -p 'Option:' $COLORS | perl -p -e 's/^.*?: ?//'`
+	option_value=`lpoptions -d $printer -l | grep $option_to_set | awk 'BEGIN { FS = ": " } ; { print $2 }' | sed 's/ \+/\n/g' | sed 's/*\+//g' | $DMENU -p 'Setting:' $COLORS | perl -p -e 's/^.*?: ?//'`
+	option_to_set_1d=`echo $option_to_set | awk 'BEGIN { FS = "/" } ; { print $1 }'`
+        if [ -z $option_value ]; then
+		options=$options"-o $option_to_set_1d "
+	else
+		options=$options"-o $option_to_set_1d=$option_value "
+	fi
+	set_options=`echo -e 'No\nYes' | $DMENU -p 'Set more options?' $COLORS | perl -p -e 's/^.*?: ?//'`
+done
+echo $options
+
+lpr $options -P $printer "$@"
